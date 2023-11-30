@@ -18,6 +18,7 @@ This example provides an simple transient rendering for cornell-box scene.
 cd tof_tutorials/transient
 python main.py
 ```
+You can also try other rendering algorithms in each folder in `tof_tutorials`.
 
 ## Citation
 If you find this useful for your research, please consider to cite:
