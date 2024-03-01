@@ -10,12 +10,9 @@ add_plugin(stokes     stokes.cpp)
 add_plugin(volpath    volpath.cpp)
 add_plugin(volpathmis volpathmis.cpp)
 add_plugin(dopplertofpath dopplertofpath.cpp)
-#add_plugin(dopplertofpathpositional dopplerpathtofpositional.cpp)
-#add_plugin(transientpath transientpath.cpp)
-#add_plugin(timegatedpath timegatedpath.cpp)
-#add_plugin(pathwithlength pathwithlength.cpp)
 add_plugin(velocity velocity.cpp)
 add_plugin(transient transient.cpp)
+add_plugin(voltransient voltransient.cpp)
 
 
 

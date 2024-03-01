@@ -102,9 +102,26 @@ public:
         }
     }
 
-    UInt32 path_length_to_index(Float path_length) const{
+    void scatter_L(Float path_length, Spectrum L, Float * aovs) const {
         Float r = ((path_length - m_tMin) / (m_tMax - m_tMin)) * m_tBin;
-        return UInt32(dr::minimum(dr::maximum(r, 0), m_tBin - 1));
+        UInt32 idx = UInt32(r);
+
+        Float idx_valid = Float(idx >= 0) * Float(idx < m_tBin);
+        
+        UInt32 curr_idx = dr::clamp(idx, 0, m_tBin - 1);
+        UInt32 next_idx = dr::clamp(idx + 1, 0, m_tBin - 1);
+        Float remainder = (r - curr_idx);
+
+        Spectrum L1 = L * (1 - remainder) * idx_valid;
+        Spectrum L2 = L * remainder * idx_valid;
+
+        dr::scatter_reduce(ReduceOp::Add, aovs, L1[0], 3 * curr_idx + 0);
+        dr::scatter_reduce(ReduceOp::Add, aovs, L1[1], 3 * curr_idx + 1);
+        dr::scatter_reduce(ReduceOp::Add, aovs, L1[2], 3 * curr_idx + 2);
+
+        dr::scatter_reduce(ReduceOp::Add, aovs, L2[0], 3 * next_idx + 0);
+        dr::scatter_reduce(ReduceOp::Add, aovs, L2[1], 3 * next_idx + 1);
+        dr::scatter_reduce(ReduceOp::Add, aovs, L2[2], 3 * next_idx + 2);
     }
 
     std::pair<Spectrum, Bool> sample(const Scene *scene,
@@ -154,7 +171,7 @@ public:
            lead to undefined behavior. */
         dr::Loop<Bool> loop("Path Tracer", sampler, ray, throughput, result,
                             eta, depth, valid_ray, prev_si, prev_bsdf_pdf,
-                            prev_bsdf_delta, active);
+                            prev_bsdf_delta, active, path_length);
 
         /* Inform the loop about the maximum number of loop iterations.
            This accelerates wavefront-style rendering by avoiding costly
@@ -197,10 +214,8 @@ public:
                     result);
                 
                 Spectrum L  = throughput * ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf;
-                UInt32 index = path_length_to_index(path_length);
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[0], 3 * index + 0);
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[1], 3 * index + 1);
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[2], 3 * index + 2);
+                scatter_L(path_length, L, aovs);
+
             }
 
             // Continue tracing the path at this point?
@@ -259,11 +274,7 @@ public:
                     throughput, bsdf_val * em_weight * mis_em, result);
 
                 Spectrum L  = throughput * bsdf_val * em_weight * mis_em;
-                UInt32 index = path_length_to_index(path_length + ds.dist);
-                
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[0], 3 * index + 0);
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[1], 3 * index + 1);
-                dr::scatter_reduce(ReduceOp::Add, aovs, L[2], 3 * index + 2);
+                scatter_L(path_length + ds.dist, L, aovs);
             }
 
             // ---------------------- BSDF sampling ----------------------
