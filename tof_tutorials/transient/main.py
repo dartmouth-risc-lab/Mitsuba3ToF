@@ -37,7 +37,7 @@ def run_scene(
     for i in range(N):
         image = cv2.imread(os.path.join(output_folder, "images", "%d.png" % i))
         images.append(image)
-    export_video_from_images(images, os.path.join(output_folder, "video"), "transient", fps=60)
+    export_video_from_images(images, os.path.join(output_folder, "video"), "transient", fps=24)
 
 if __name__ == "__main__":
     run_scene(

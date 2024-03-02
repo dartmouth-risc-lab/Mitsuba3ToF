@@ -91,8 +91,8 @@ public:
     void scatter_L(Float path_length, Spectrum L, Float * aovs) const {
         Float r = ((path_length - m_tMin) / (m_tMax - m_tMin)) * m_tBin;
         UInt32 idx = UInt32(r);
-
-        Float idx_valid = Float(idx >= 0) * Float(idx < m_tBin);
+        
+        Float idx_valid = Float(path_length >= m_tMin) * Float(path_length < m_tMax);
         
         UInt32 curr_idx = dr::clamp(idx, 0, m_tBin - 1);
         UInt32 next_idx = dr::clamp(idx + 1, 0, m_tBin - 1);

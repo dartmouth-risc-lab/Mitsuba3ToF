@@ -13,6 +13,7 @@ add_plugin(dopplertofpath dopplertofpath.cpp)
 add_plugin(velocity velocity.cpp)
 add_plugin(transient transient.cpp)
 add_plugin(voltransient voltransient.cpp)
+add_plugin(timegated timegated.cpp)
 
 
 

@@ -84,51 +84,78 @@ paths of arbitrary length to compute both direct and indirect illumination.
 
  */
 
+#define TOF_MODE_BOX 0
+#define TOF_MODE_TENT 1
+#define TOF_MODE_COS 2
+#define TOF_MODE_SIN 3
+#define TOF_MODE_EXPONENTIAL 4
+
 template <typename Float, typename Spectrum>
-class TransientPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
+class TimeGatedPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    TransientPathIntegrator(const Properties &props) : Base(props) {
-        m_tMin = props.get<ScalarFloat>("tMin", 0.0);
-        m_tMax = props.get<ScalarFloat>("tMax", 1.0);
-        if(props.has_property("tBin")){
-            m_tBin = props.get<uint32_t>("tBin", 10);
-            m_tRes = (m_tMax - m_tMin) / m_tBin;
-        } else {
-            m_tRes = props.get<ScalarFloat>("tRes", 0.1);
-            m_tBin = (uint32_t)((m_tMax - m_tMin) / m_tRes);
+    TimeGatedPathIntegrator(const Properties &props) : Base(props) {
+        m_targetDist = props.get<ScalarFloat>("targetDist", 1.0f);
+        m_windowSize = props.get<ScalarFloat>("windowSize", 1.0f);
+        std::string mode = props.get<std::string>("mode", "box");
+
+        if(strcmp(mode.c_str(), "box") == 0){
+            m_mode = TOF_MODE_BOX;
+        }
+        if(strcmp(mode.c_str(), "tent") == 0){
+            m_mode = TOF_MODE_TENT;
+        }
+        if(strcmp(mode.c_str(), "cos") == 0){
+            m_mode = TOF_MODE_COS;
+        }
+        if(strcmp(mode.c_str(), "sin") == 0){
+            m_mode = TOF_MODE_SIN;
+        }
+        if(strcmp(mode.c_str(), "exponential") == 0){
+            m_mode = TOF_MODE_EXPONENTIAL;
         }
     }
 
-    void scatter_L(Float path_length, Spectrum L, Float * aovs) const {
-        Float r = ((path_length - m_tMin) / (m_tMax - m_tMin)) * m_tBin;
-        UInt32 idx = UInt32(r);
-
-        Float idx_valid = Float(path_length >= m_tMin) * Float(path_length < m_tMax);
-        
-        UInt32 curr_idx = dr::clamp(idx, 0, m_tBin - 1);
-        UInt32 next_idx = dr::clamp(idx + 1, 0, m_tBin - 1);
-        Float remainder = (r - curr_idx);
-
-        Spectrum L1 = L * (1 - remainder) * idx_valid;
-        Spectrum L2 = L * remainder * idx_valid;
-
-        dr::scatter_reduce(ReduceOp::Add, aovs, L1[0], 3 * curr_idx + 0);
-        dr::scatter_reduce(ReduceOp::Add, aovs, L1[1], 3 * curr_idx + 1);
-        dr::scatter_reduce(ReduceOp::Add, aovs, L1[2], 3 * curr_idx + 2);
-
-        dr::scatter_reduce(ReduceOp::Add, aovs, L2[0], 3 * next_idx + 0);
-        dr::scatter_reduce(ReduceOp::Add, aovs, L2[1], 3 * next_idx + 1);
-        dr::scatter_reduce(ReduceOp::Add, aovs, L2[2], 3 * next_idx + 2);
+    Float path_length_importance(Float path_length) const{
+        Float output = 1.f;
+        Float v = (path_length - m_targetDist) / m_windowSize;
+        switch(m_mode){
+            case TOF_MODE_BOX:
+            {
+                output = dr::select(dr::abs(v) < 0.5f, 1.f, 0.f);
+                break;
+            }
+            case TOF_MODE_TENT:
+            {
+                output = dr::maximum(1 - dr::abs(v), 0.f);
+                break;
+            }
+            case TOF_MODE_COS:
+            {
+                output = dr::cos(2 * dr::Pi<Float> * v);
+                break;
+            }
+            case TOF_MODE_SIN:
+            {
+                output = dr::sin(2 * dr::Pi<Float> * v);
+                break;
+            }
+            case TOF_MODE_EXPONENTIAL:
+            {
+                output = dr::select(path_length > m_targetDist, 0.f, dr::exp(v));
+                break;
+            }
+        }
+        return output;
     }
 
     std::pair<Spectrum, Bool> sample(const Scene *scene,
                                      Sampler *sampler,
                                      const RayDifferential3f &ray_,
                                      const Medium * /* medium */,
-                                     Float * aovs,
+                                     Float * /* aovs */,
                                      Bool active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
@@ -142,13 +169,9 @@ public:
         Spectrum result               = 0.f;
         Float eta                     = 1.f;
         UInt32 depth                  = 0;
-        
+
         Float path_length = 0.0f;
 
-        // clear aovs
-        for(uint32_t i=0; i<3 * m_tBin; i++){
-            aovs[i] = 0.0;
-        }
 
         // If m_hide_emitters == false, the environment emitter will be visible
         Mask valid_ray                = !m_hide_emitters && dr::neq(scene->environment(), nullptr);
@@ -186,8 +209,8 @@ public:
                 scene->ray_intersect(ray,
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
-            
             path_length += dr::select(si.is_valid(), si.t * eta, 0);
+
 
             // ---------------------- Direct emission ----------------------
 
@@ -206,16 +229,15 @@ public:
 
                 // Compute MIS weight for emitter sample from previous bounce
                 Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
+                // mis_bsdf = 0.0;
 
+                Float weight_path_length = path_length_importance(path_length);
+                
                 // Accumulate, being careful with polarization (see spec_fma)
                 result = spec_fma(
                     throughput,
-                    ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf,
+                    ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf * weight_path_length,
                     result);
-                
-                Spectrum L  = throughput * ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf;
-                scatter_L(path_length, L, aovs);
-
             }
 
             // Continue tracing the path at this point?
@@ -268,13 +290,13 @@ public:
                 // Compute the MIS weight
                 Float mis_em =
                     dr::select(ds.delta, 1.f, mis_weight(ds.pdf, bsdf_pdf));
+                // mis_em = 1.0;
+
+                Float weight_path_length = path_length_importance(path_length + ds.dist);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(
-                    throughput, bsdf_val * em_weight * mis_em, result);
-
-                Spectrum L  = throughput * bsdf_val * em_weight * mis_em;
-                scatter_L(path_length + ds.dist, L, aovs);
+                    throughput, bsdf_val * em_weight * mis_em * weight_path_length, result);
             }
 
             // ---------------------- BSDF sampling ----------------------
@@ -338,7 +360,7 @@ public:
     // =============================================================
 
     std::string to_string() const override {
-        return tfm::format("TransientPathIntegrator[\n"
+        return tfm::format("TimeGatedPathIntegrator[\n"
             "  max_depth = %u,\n"
             "  rr_depth = %u\n"
             "]", m_max_depth, m_rr_depth);
@@ -366,12 +388,12 @@ public:
 
     MI_DECLARE_CLASS()
 private:
-    ScalarFloat m_tMin;
-    ScalarFloat m_tMax;
-    ScalarFloat m_tRes;
-    uint32_t m_tBin;
+    ScalarFloat m_targetDist;
+    ScalarFloat m_targetDistBefore;
+    ScalarFloat m_windowSize;
+    uint32_t m_mode;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(TransientPathIntegrator, MonteCarloIntegrator)
-MI_EXPORT_PLUGIN(TransientPathIntegrator, "Path Tracer integrator");
+MI_IMPLEMENT_CLASS_VARIANT(TimeGatedPathIntegrator, MonteCarloIntegrator)
+MI_EXPORT_PLUGIN(TimeGatedPathIntegrator, "Path Tracer integrator");
 NAMESPACE_END(mitsuba)
