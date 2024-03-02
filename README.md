@@ -29,7 +29,7 @@ You can also try other rendering algorithms in each folder in `tof_tutorials`.
 ### Transient Renderering
 For transient rendering, we use binning and build a histogram for the transient signal.
 Here, transient signal is equivalent to impulse response.
-We provide two integrators, `transient` for surface rendering, and `voltransient` for participating media rendering. 
+We provide two integrators, `transient` for surface rendering, and `voltransient` for participating media (volumetric) rendering. 
 Followings are used parameters for both of the integrators.
 
 * `tMin` : Minimum path length.
@@ -37,8 +37,9 @@ Followings are used parameters for both of the integrators.
 * `tBin` : Number of time bins.
 * `tRes` : Path length resolution in histogram. If `tBin` is set, `tBin` is used with higher priority.
 
-![transient_cornell_box](assets/transient_cornell_box.gif)
-![voltransient_cornell_box](assets/voltransient_cornell_box.gif)
+| ![transient_cornell_box](assets/transient_cornell_box.gif) | ![voltransient_cornell_box](assets/voltransient_cornell_box.gif) | 
+|:--:| :--:| 
+| Surface transient rendering | Volumetric transient rendering |
 
 
 ### Time Gated Rendering
