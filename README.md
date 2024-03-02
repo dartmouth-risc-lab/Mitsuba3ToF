@@ -54,8 +54,14 @@ Followings are used parameters for both of the integrators.
     * `sin` :  $\sin(2 \pi|v|)$
     * `exponential`:  $u(-v)\exp(v)$
 
-![box](assets/box_1.png)
-![exp](assets/exp_0.1.png)
+| ![box](assets/box_1.png) | 
+|:--:| 
+| `box` with `windowSize` 1 |
+
+| ![exp](assets/exp_0.1.png) | 
+|:--:| 
+| `exponential` with `windowSize` 0.1 |
+
 
 ## Citation
 If you find this useful for your research, please consider to cite:
