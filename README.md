@@ -48,7 +48,7 @@ Followings are used parameters for both of the integrators.
 
 * `targetDist` ($t0$) : Target path length.
 * `windowSize` ($w$) : A parameter used for path length importance function.
-* `mode` : Path length importance function. We provide following 5 modes. Each mode returns following value for $t$, where $v = (t - t0) / w$.
+* `mode` : Path length importance function. We provide following 5 modes. Each mode returns following value, where $v = (t - t0) / w$ and $t$ is path distance
     * `box` : $1(|v| < 0.5)$
     * `tent`: $\max(1 - |v|, 0)$
     * `cos` :  $\cos(2 \pi|v|)$
