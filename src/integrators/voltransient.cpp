@@ -302,19 +302,17 @@ public:
                                 && !(dr::eq(depth, 0u) && m_hide_emitters);
                 if (dr::any_or<true>(active_e)) {
                     Float emitter_pdf = 1.0f;
-                    Float light_dist = 0.0f;
                     if (dr::any_or<true>(active_e && !count_direct)) {
                         // Get the PDF of sampling this emitter using next event estimation
                         DirectionSample3f ds(scene, si, last_scatter_event);
                         emitter_pdf = scene->pdf_emitter_direction(last_scatter_event, ds, active_e);
-                        light_dist = ds.dist;
                     }
                     Spectrum emitted = emitter->eval(si, active_e);
                     Spectrum contrib = dr::select(count_direct, throughput * emitted,
                                                   throughput * mis_weight(last_scatter_direction_pdf, emitter_pdf) * emitted);
                     dr::masked(result, active_e) += contrib;
                     
-                    scatter_L(path_length + light_dist, contrib, aovs);
+                    scatter_L(path_length, contrib, aovs);
                 }
             }
             active_surface &= si.is_valid();
@@ -323,7 +321,6 @@ public:
                 BSDFContext ctx;
                 BSDFPtr bsdf  = si.bsdf(ray);
                 Mask active_e = active_surface && has_flag(bsdf->flags(), BSDFFlags::Smooth) && (depth + 1 < (uint32_t) m_max_depth);
-
                 if (likely(dr::any_or<true>(active_e))) {
                     auto [emitted, ds] = sample_emitter(si, scene, sampler, medium, channel, active_e);
 
@@ -338,7 +335,7 @@ public:
                     Spectrum L = throughput * bsdf_val * mis_weight(ds.pdf, dr::select(ds.delta, 0.f, bsdf_pdf)) * emitted;
                     result[active_e] += L;
 
-                    scatter_L(path_length, L, aovs);
+                    scatter_L(path_length + ds.dist, L, aovs);
                 }
 
                 // ----------------------- BSDF sampling ----------------------
