@@ -68,7 +68,7 @@ MI_VARIANT Scene<Float, Spectrum>::Scene(const Properties &props) {
         if(shape->is_instance()){
             if(std::find(m_shapegroups.begin(), m_shapegroups.end(), shape->get_shapegroup()) == m_shapegroups.end()){
                 // std::cout << "Not found! " << std::endl;
-                m_shapegroups.push_back(shape->get_shapegroup());
+                m_shapegroups.push_back((ShapeGroup*) shape->get_shapegroup());
             }
         }
     }
